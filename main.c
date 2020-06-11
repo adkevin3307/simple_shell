@@ -31,7 +31,6 @@ static inline pid_t get_child_pid()
 
 int last_signo = 0;
 int process_amount = 1;
-int command_concat_type[MAX_PROCESS] = { 0 };
 
 char* readline()
 {
@@ -65,10 +64,6 @@ char*** split(char *buffer)
     // initialize
     process_amount = 1;
 
-    for (int i = 0; i < MAX_PROCESS; i++) {
-        command_concat_type[i] = 0;
-    }
-
     tokens[0] = (char**)malloc(buffer_size * sizeof(char*));
     for (int i = 0; i < buffer_size; i++) {
         tokens[0][i] = NULL;
@@ -82,15 +77,8 @@ char*** split(char *buffer)
     while (token_type = yylex()) {
         token = strdup(yyget_text());
 
-        if (
-            token_type == PIPE ||
-            token_type == REDIRECT_IN ||
-            token_type == REDIRECT_OUT ||
-            token_type == REDIRECT_OUT_APPEND
-        ) {
+        if (token_type == PIPE) {
             process_amount += 1;
-
-            command_concat_type[process_amount - 1] = token_type;
 
             tokens[process_amount - 1] = (char**)malloc(buffer_size * sizeof(char*));
             for (int i = 0; i < buffer_size; i++) {
@@ -108,6 +96,34 @@ char*** split(char *buffer)
     return tokens;
 }
 
+char** erase_command(int index, char **command)
+{
+    for (int i = index; command[i] != NULL; i++) {
+        command[i] = command[i + 1];
+    }
+
+    return command;
+}
+
+char** redirect_handler(int *in, int *out, char **command)
+{
+    for (int i = 0; command[i] != NULL; i++) {
+        if (strcmp(command[i], "<") == 0 || strcmp(command[i], ">") == 0 || strcmp(command[i], ">>") == 0) {
+
+            if (strcmp(command[i], "<") == 0) *in = open(command[i + 1], O_RDONLY);
+            else if (strcmp(command[i], ">") == 0) *out = open(command[i + 1], O_TRUNC | O_CREAT | O_WRONLY, 0644);
+            else if (strcmp(command[i], ">>")) *out = open(command[i + 1], O_APPEND, 0644);
+
+            command = erase_command(i, command);
+            command = erase_command(i, command);
+
+            i -= 1;
+        }
+    }
+
+    return command;
+}
+
 void process(int in, int out, char **command)
 {
     pid_t pid, wpid;
@@ -119,6 +135,8 @@ void process(int in, int out, char **command)
     }
 
     if (pid == 0) {
+        command = redirect_handler(&in, &out, command);
+
         if (in != STDIN_FILENO) {
             dup2(in, STDIN_FILENO);
             close(in);
@@ -166,26 +184,6 @@ void execute(char ***commands)
 
         in = STDIN_FILENO;
 
-        // change in
-        for (int j = 1; j < process_amount; j++) {
-            if (command_concat_type[j] == REDIRECT_IN) {
-                in = open(commands[j][0], O_RDONLY);
-
-                for (int k = j; k < process_amount; k++) {
-                    if (k == process_amount - 1) {
-                        commands[k] = NULL;
-                        command_concat_type[k] = 0;
-                    }
-                    else {
-                        commands[k] = commands[k + 1];
-                        command_concat_type[k] = command_concat_type[k + 1];
-                    }
-                }
-
-                process_amount -= 1;
-            }
-        }
-
         for (i = 0; i < process_amount - 1; i++) {
             // 0 -> read end, 1 -> write end
             if (pipe(fd) < 0) {
@@ -194,35 +192,26 @@ void execute(char ***commands)
                 exit(EXIT_FAILURE);
             }
 
-            if (command_concat_type[i + 1] == REDIRECT_OUT) {
-                fd[1] = open(commands[i + 1][0], O_TRUNC | O_CREAT | O_WRONLY, 0644);
-            }
-
-            if (command_concat_type[i + 1] == REDIRECT_OUT_APPEND) {
-                fd[1] = open(commands[i + 1][0], O_WRONLY | O_APPEND, 0644);
-            }
-
             process(in, fd[1], commands[i]);
-
-            i += (command_concat_type[i + 1] == REDIRECT_OUT || command_concat_type[i + 1] == REDIRECT_OUT_APPEND);
 
             close(fd[1]);
             in = fd[0];
         }
 
-        if (
-            command_concat_type[i + 1] != REDIRECT_IN &&
-            command_concat_type[i + 1] != REDIRECT_OUT &&
-            command_concat_type[i + 1] != REDIRECT_OUT_APPEND
-        ) {
-            if (in != STDIN_FILENO) {
-                dup2(in, STDIN_FILENO);
-            }
+        int out = STDOUT_FILENO;
+        commands[i] = redirect_handler(&in, &out, commands[i]);
 
-            if (execvp(commands[i][0], commands[i]) == -1) {
-                fprintf(stderr, "Failed to execute command\n");
-                exit(EXIT_FAILURE);
-            }
+        if (in != STDIN_FILENO) {
+            dup2(in, STDIN_FILENO);
+        }
+
+        if (out != STDOUT_FILENO) {
+            dup2(out, STDOUT_FILENO);
+        }
+
+        if (execvp(commands[i][0], commands[i]) == -1) {
+            fprintf(stderr, "Failed to execute command\n");
+            exit(EXIT_FAILURE);
         }
     }
     else {
@@ -251,7 +240,7 @@ int forward_signal(int signo)
 {
     struct sigaction act;
 
-    memset(&act, 0, sizeof act);
+    memset(&act, 0, sizeof(act));
     sigemptyset(&act.sa_mask);
     act.sa_sigaction = signal_handler;
     act.sa_flags = SA_SIGINFO | SA_RESTART;
