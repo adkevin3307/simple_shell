@@ -43,7 +43,7 @@
 ^[a-zA-Z0-9]+[-+a-zA-Z0-9]* {
     return COMMAND;
 }
-[-+]*[\\/a-zA-Z0-9.,*]+ {
+[-+]*[\\/a-zA-Z0-9.,*_]+ {
     return ARGUMENT;
 }
 "~" {
