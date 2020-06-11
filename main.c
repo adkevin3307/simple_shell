@@ -130,11 +130,10 @@ void process(int in, int out, char **command)
 
         if (execvp(command[0], command) == -1) {
             fprintf(stderr, "Failed to execute command\n");
+            exit(EXIT_FAILURE);
         }
     }
     else {
-        set_child_pid(pid);
-    
         int status;
         while (1) {
             wpid = waitpid(pid, &status, WNOHANG);
@@ -222,6 +221,7 @@ void execute(char ***commands)
 
             if (execvp(commands[i][0], commands[i]) == -1) {
                 fprintf(stderr, "Failed to execute command\n");
+                exit(EXIT_FAILURE);
             }
         }
     }
