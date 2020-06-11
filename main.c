@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,11 +13,14 @@
 
 #include "constant.h"
 
+
 typedef struct yy_buffer_state* YY_BUFFER_STATE;
 extern int yylex();
 extern YY_BUFFER_STATE yy_scan_string(const char *base);
 extern void yy_delete_buffer(YY_BUFFER_STATE buffer);
 extern char* yyget_text();
+
+static char **g_envp;
 
 static pid_t internal_child_pid = 0;
 
@@ -31,6 +36,8 @@ static inline pid_t get_child_pid()
 
 int last_signo = -1;
 int process_amount = 1;
+
+char* get_envp(char* token);
 
 void prompt_message()
 {
@@ -98,6 +105,9 @@ char*** split(char *buffer)
             continue;
         }
 
+        char *temp = get_envp(token);
+        if (temp != NULL) token = temp;
+
         tokens[process_amount - 1][index[process_amount - 1]++] = token;
     }
 
@@ -156,7 +166,7 @@ void process(int in, int out, char **command)
             close(out);
         }
 
-        if (execvp(command[0], command) == -1) {
+        if (execvpe(command[0], command, g_envp) == -1) {
             fprintf(stderr, "Failed to execute command\n");
             exit(EXIT_FAILURE);
         }
@@ -219,7 +229,7 @@ void execute(char ***commands)
             dup2(out, STDOUT_FILENO);
         }
 
-        if (execvp(commands[i][0], commands[i]) == -1) {
+        if (execvpe(commands[i][0], commands[i], g_envp) == -1) {
             fprintf(stderr, "Failed to execute command\n");
             exit(EXIT_FAILURE);
         }
@@ -260,8 +270,48 @@ int forward_signal(int signo)
     return 0;
 }
 
-int main(int argc, char **argv)
+char* get_envp(char *token)
 {
+    int i;
+    int count = strlen(token);
+    char *temp = (char*)malloc((count + 1) * sizeof(char));
+
+    for (i = 0; i < count; i++) {
+        temp[i] = token[i];
+    }
+    temp[i] = '=';
+    temp[i + 1] = '\0';
+
+    for (i = 0; g_envp[i]; i++) {
+        int flag = 0;
+        for (int j = 0; j < strlen(temp); j++) {
+            flag += (g_envp[i][j] == temp[j]);
+        }
+        if (flag == strlen(temp)) return (g_envp[i] + strlen(temp));
+    }
+
+    return NULL;
+}
+
+void init_envp(char **envp)
+{
+    int count = 0;
+
+    while (envp[count]) {
+        count += 1;
+    }
+
+    g_envp = (char**)malloc((count + 1) * sizeof(char*));
+
+    for (int i = 0; i < count + 1; i++) {
+        g_envp[i] = envp[i];
+    }
+}
+
+int main(int argc, char **argv, char **envp)
+{
+    init_envp(envp);
+
     // signal forward
     if (
         forward_signal(SIGINT) ||
