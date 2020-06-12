@@ -34,7 +34,7 @@ static inline pid_t get_child_pid()
     return __atomic_load_n(&internal_child_pid, __ATOMIC_SEQ_CST);
 }
 
-int last_signo = -1;
+int last_signo = 0;
 int process_amount = 1;
 
 char* get_envp(char* token);
@@ -185,7 +185,7 @@ void execute(char ***commands)
 {
     pid_t pid, wpid;
 
-    if (last_signo != -1) return;
+    if (last_signo != 0 || commands[0][0] == NULL) return;
 
     if (strcmp(commands[0][0], "cd") == 0) {
         chdir(commands[0][1]);
@@ -334,7 +334,7 @@ int main(int argc, char **argv, char **envp)
 
         free(buffer);
         free(commands);
-        last_signo = -1;
+        last_signo = 0;
     }
 
     return 0;
