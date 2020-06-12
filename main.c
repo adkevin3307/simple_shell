@@ -13,7 +13,6 @@
 
 #include "constant.h"
 
-
 typedef struct yy_buffer_state* YY_BUFFER_STATE;
 extern int yylex();
 extern YY_BUFFER_STATE yy_scan_string(const char *base);
@@ -203,6 +202,8 @@ void execute(char ***commands)
         int i, in, fd[2];
 
         in = STDIN_FILENO;
+        dup2(STDERR_FILENO, STDOUT_FILENO);
+        close(STDERR_FILENO);
 
         for (i = 0; i < process_amount - 1; i++) {
             // 0 -> read end, 1 -> write end
