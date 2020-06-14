@@ -202,8 +202,6 @@ void execute(char ***commands)
         int i, in, fd[2];
 
         in = STDIN_FILENO;
-        dup2(STDERR_FILENO, STDOUT_FILENO);
-        close(STDERR_FILENO);
 
         for (i = 0; i < process_amount - 1; i++) {
             // 0 -> read end, 1 -> write end
