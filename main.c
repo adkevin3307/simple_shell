@@ -44,7 +44,7 @@ void prompt_message()
     char buffer[1024];
 
     pwd = getcwd(buffer, 1024);
-    printf("%s $ ", pwd);
+    printf("\e[0;34m%s\e[m $ ", pwd);
 }
 
 char* readline()
